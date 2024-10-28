@@ -1,0 +1,5 @@
+OrienterNet-main/*
+data/*
+__pycache__/*
+maploc/*
+data_osm/*
