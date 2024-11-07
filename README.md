@@ -10,21 +10,21 @@
 - [ ] Dataset Map and OSM alignment check
 
 ### 3 Network Design
-#### 3.1 Visual Place Recognition (VPR)
+
+#### 3.1 Point Cloud BEV Representation 
+Options: 
+- [ ] BEV Image Generation [(ref)](https://arxiv.org/pdf/2408.01841)
+- [ ] PillarNext [(ref)](https://github.com/qcraftai/pillarnext?tab=readme-ov-file)
+
+#### 3.2 OSM Representation 
+Options:
+- [ ] Raster Image
+- [ ] Proposed OSM representation
+
+#### 3.3 Visual Place Recognition (VPR)
 
 ### 4 Current Unsolved Problems 
-- The alignment between OSM and Nuscenes map is not very well, obvious drift can be seen in the figures.
+[Current problems.md](Current_problems.md)
 
-![Boston Seaport](boston-seaport.png)
-Boston Seaport 
-
-![Singapore Holland Village](singapore-hollandvillage.png)
-Singapore Holland Village
-
-![Singapore One North](singapore-onenorth.png)
-Singapore One North
-
-![Singapore Queenstown](singapore-queenstown.png)
-Singapore Queenstown
-
-- The storage and GPU in lab 1778 is not sufficient for this task.
+### 5 Progress
+[Progress.md](./Progress.md)
