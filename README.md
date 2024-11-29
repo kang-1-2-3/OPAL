@@ -18,7 +18,7 @@ Options:
 
 #### 3.2 OSM Representation 
 Options:
-- [ ] Raster Image
+- [ ] Raster Image [(ref)](https://github.com/facebookresearch/OrienterNet/tree/main)
 - [ ] Proposed OSM representation
 
 #### 3.3 Visual Place Recognition (VPR)

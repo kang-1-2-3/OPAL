@@ -1,8 +1,8 @@
-OrienterNet-main/*
 data/*
 __pycache__/*
-maploc/*
+# maploc/*
 data_osm/*
 shape/*
 network/*
-pillarnext/*
+!network/network.py
+pillarnext/
