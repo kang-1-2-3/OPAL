@@ -10,7 +10,7 @@ from pathlib import Path
 from maploc.osm.tiling import TileManager, BoundaryBox
 from gen_bev_images import getBEV
 from PIL import Image
-
+import torch
 import cv2
 
 class PcMapLocDataset(data.Dataset):
@@ -93,12 +93,17 @@ class PcMapLocDataset(data.Dataset):
         tile_manager = TileManager.load(Path(os.path.join(self.opt['tiling']['tiles_path'], f"tiles_{seq}.pkl")))
         return tile_manager
 
-    def pc_bev_generation(self, pcs):
+    def pc_bev_generation(self, pcs: np.ndarray):
         """
         Input pc shape --> [N, 3]
         Output pc_bev_img shape --> [H, W] (201, 201)
+
+        With random rotation of the point cloud for data augmentation
         """
         # print(pcs.shape)
+        ang = np.random.randint(360)/180.0*np.pi
+        rot_mat = np.array([[np.cos(ang),np.sin(ang),0],[-np.sin(ang),np.cos(ang),0],[0,0,1]])
+        pcs = pcs.dot(rot_mat)
         pcs = pcs[np.where(np.abs(pcs[:,0])<40)[0],:]
         pcs = pcs[np.where(np.abs(pcs[:,1])<40)[0],:]
         pcs = pcs[np.where((np.abs(pcs[:,2])<40))[0],:]
@@ -141,6 +146,9 @@ class PcMapLocDataset(data.Dataset):
         seq_tile_manager = self.tile_manager[seq]
         # print(seq_tile_manager.bbox)
 
+        # Data augmentation
+
+
         latlon = np.array([lat, lon]) # [lat, lon] corresponds to the origin of point cloud in each frame. Here we transform it to the tile coordinate system
         proj = seq_tile_manager.projection
         xy = proj.project(latlon)
@@ -150,9 +158,12 @@ class PcMapLocDataset(data.Dataset):
         # np.save(f"canvas_{seq}_{seq_index}.npy", canvas.raster)
         # print(canvas.raster.shape) # (3, 128, 128)
 
+
         # TODO: Future work [Calculating overlap ratio between pc_bev_img and osm_map]
-        
-        return {'pc_bev_img': pc_bev_img, 'osm_map': canvas.raster}
+        # torch.from_numpy(np.ascontiguousarray(pc_bev_img)).long()
+        return {
+            'pc_bev_img': torch.from_numpy(pc_bev_img.astype(np.float32)).repeat(3, 1, 1), 
+            'osm_map': torch.from_numpy(np.ascontiguousarray(canvas.raster)).long()}
 
 
 if __name__ == "__main__":

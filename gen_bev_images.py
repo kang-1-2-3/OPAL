@@ -11,7 +11,6 @@ from tqdm import trange
 # parser.add_argument('--bev_save_path', type=str, default="./KITTI_new_imgs/00/imgs/", help='path to data')
 
 def getBEV(all_points): #N*3
-    
     all_points_pc = o3d.geometry.PointCloud()# pcl.PointCloud()
     all_points_pc.points = o3d.utility.Vector3dVector(all_points)#all_points_pc.from_array(all_points)
     all_points_pc = all_points_pc.voxel_down_sample(voxel_size=0.4) #f = all_points_pc.make_voxel_grid_filter()

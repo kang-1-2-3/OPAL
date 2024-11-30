@@ -29,6 +29,10 @@ model:
         padding: replicate
       unary_prior: false
 training:
+  # device: "cuda"
+  seed: 42
+  checkpoint_dir: "checkpoints"
+  device: "cpu"
   early_stop:
     patience: 5
   num_epochs: 30
