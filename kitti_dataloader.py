@@ -12,6 +12,7 @@ from gen_bev_images import getBEV
 from PIL import Image
 import torch
 import cv2
+import time 
 
 class PcMapLocDataset(data.Dataset):
     def __init__(self, opt, mode):
@@ -48,7 +49,8 @@ class PcMapLocDataset(data.Dataset):
             seq_tile_manager = self.load_seq_tile_manager(seq)
             # add data to data_list
             for index, (pc_file_path, T_w_velo_i, lat, lon) in enumerate(zip(kitti_dataset.velo_files, pc_gps_file['T_w_velo_i'], pc_gps_file['lat'], pc_gps_file['lon'])):
-                dataset.append({'seq': seq, 'index': index, 'pc_file_path': pc_file_path, 'gps_trans_data': T_w_velo_i, 'world_lla': pc_gps_file['world_lla'], 'lat': lat, 'lon': lon})
+                pc_bev_img_path = os.path.join(f"{self.opt['loading']['pc_bev_dir']}", seq, f"{index:06d}.png")
+                dataset.append({'seq': seq, 'index': index, 'pc_file_path': pc_file_path, 'gps_trans_data': T_w_velo_i, 'world_lla': pc_gps_file['world_lla'], 'lat': lat, 'lon': lon, 'pc_bev_img_path': pc_bev_img_path})
             tile_manager[seq] = seq_tile_manager
         return dataset, tile_manager
     
@@ -93,7 +95,7 @@ class PcMapLocDataset(data.Dataset):
         tile_manager = TileManager.load(Path(os.path.join(self.opt['tiling']['tiles_path'], f"tiles_{seq}.pkl")))
         return tile_manager
 
-    def pc_bev_generation(self, pcs: np.ndarray):
+    def pc_bev_generation(self, pcs: np.ndarray, seed: int):
         """
         Input pc shape --> [N, 3]
         Output pc_bev_img shape --> [H, W] (201, 201)
@@ -101,6 +103,7 @@ class PcMapLocDataset(data.Dataset):
         With random rotation of the point cloud for data augmentation
         """
         # print(pcs.shape)
+        np.random.seed(seed)
         ang = np.random.randint(360)/180.0*np.pi
         rot_mat = np.array([[np.cos(ang),np.sin(ang),0],[-np.sin(ang),np.cos(ang),0],[0,0,1]])
         pcs = pcs.dot(rot_mat)
@@ -131,16 +134,25 @@ class PcMapLocDataset(data.Dataset):
         return len(self.data_list)
 
     def __getitem__(self, index):
+        seed = index
+        load_start = time.time()
         data_item = self.data_list[index]
-        seq, seq_index, pc_file_path, gps_trans_data, world_lla, lat, lon = data_item['seq'], data_item['index'], data_item['pc_file_path'], data_item['gps_trans_data'], data_item['world_lla'], data_item['lat'], data_item['lon']
+        seq, seq_index, pc_file_path, gps_trans_data, world_lla, lat, lon, pc_bev_img_path = data_item['seq'], data_item['index'], data_item['pc_file_path'], data_item['gps_trans_data'], data_item['world_lla'], data_item['lat'], data_item['lon'], data_item['pc_bev_img_path']
         # print(lat, lon)
         # print(world_lla)
         # validate if the seq and seq_index correspond to the pc_file_path
-        self.validate_seq_and_index(pc_file_path, seq, seq_index)
+        # self.validate_seq_and_index(pc_file_path, seq, seq_index)
 
         # PC BEV image generation
-        pcs = np.fromfile(pc_file_path,dtype=np.float32).reshape(-1,4)[:,:3] # [N, 3]
-        pc_bev_img = self.pc_bev_generation(pcs) # [H, W] (201, 201)
+        
+        # pcs = np.fromfile(pc_file_path,dtype=np.float32).reshape(-1,4)[:,:3] # [N, 3]
+        # pc_bev_img = self.pc_bev_generation(pcs, seed)/255.0 # [H, W]
+        #  (201, 201)
+
+        pc_bev_img = cv2.imread(pc_bev_img_path)
+        mat = cv2.getRotationMatrix2D((pc_bev_img.shape[1]//2, pc_bev_img.shape[0]//2 ), np.random.randint(0,360), 1)
+        pc_bev_img = cv2.warpAffine(pc_bev_img, mat, pc_bev_img.shape[:2])
+        pc_bev_img = pc_bev_img.transpose(2,0,1)
         # cv2.imwrite(f"pc_bev_img_{seq}_{seq_index}.png", pc_bev_img)
         # TODO: [Clip OSM map from seq_tile_manager with gps_data]
         seq_tile_manager = self.tile_manager[seq]
@@ -155,14 +167,20 @@ class PcMapLocDataset(data.Dataset):
         # print(xy)
         sample_bbox = BoundaryBox(xy-self.tile_size//2, xy+self.tile_size//2)
         canvas = seq_tile_manager.query(sample_bbox)
+        # vis
+        # from maploc.osm.viz import Colormap
+        # vis = Colormap.apply(canvas.raster)
+        # print(vis.shape)
+
+        # plt.imsave(f"canvas_{seq}_{seq_index}.png", vis.astype(np.float32))
         # np.save(f"canvas_{seq}_{seq_index}.npy", canvas.raster)
         # print(canvas.raster.shape) # (3, 128, 128)
 
-
+        # print(f"BEV generation time: {bev_generation_time}, OSM query time: {osm_query_time}", 'Total time:', time.time()-load_start)
         # TODO: Future work [Calculating overlap ratio between pc_bev_img and osm_map]
         # torch.from_numpy(np.ascontiguousarray(pc_bev_img)).long()
         return {
-            'pc_bev_img': torch.from_numpy(pc_bev_img.astype(np.float32)).repeat(3, 1, 1), 
+            'pc_bev_img': torch.from_numpy(pc_bev_img.astype(np.float32)/255.0), 
             'osm_map': torch.from_numpy(np.ascontiguousarray(canvas.raster)).long()}
 
 
@@ -173,5 +191,5 @@ if __name__ == "__main__":
     mode = 'test'
     dataset = PcMapLocDataset(opt, mode=mode)
 
-    print(len(dataset))
-    # print(dataset[0])
+    # print(len(dataset))
+    print(dataset[0])

@@ -1,8 +1,11 @@
 data/*
-__pycache__/*
+__pycache__/
+**/__pycache__/
 # maploc/*
 data_osm/*
 shape/*
 network/*
 !network/network.py
 pillarnext/
+runs/*
+checkpoints/*

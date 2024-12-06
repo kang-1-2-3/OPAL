@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class CircleLoss(nn.Module):
-    def __init__(self, margin=0.25, gamma=256):
+    def __init__(self, margin=0.25, gamma=10):
         super(CircleLoss, self).__init__()
         self.margin = margin
         self.gamma = gamma
