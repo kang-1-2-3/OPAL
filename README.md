@@ -26,6 +26,10 @@ The OSM is divided into tiles for each sequence with the size of 64m*64m. The po
 - [X] Average pooling with fully connected layers
 - [ ] NetVLAD
  
+#### 3.4 Possible Improvement 
+1. Sementic / instance prior
+2. Image LiDAR fusion
+3. Feature enhancement
 ### 4 Current Unsolved Problems 
 [Current problems.md](Current_problems.md)
 

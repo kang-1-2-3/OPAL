@@ -97,6 +97,7 @@ class TileManager:
         if path is not None and path.is_file():
             osm = OSMData.from_file(path)
             if osm.box is not None:
+                print(osm.box, bbox_osm)
                 assert osm.box.contains(bbox_osm)
         else:
             osm = OSMData.from_dict(get_osm(bbox_osm, path))
@@ -123,6 +124,9 @@ class TileManager:
             nodes, lines, areas = map_index.query(bbox_tile)
             masks = render_raster_masks(nodes, lines, areas, canvas)
             canvas.raster = render_raster_map(masks)
+            if canvas.raster.shape[2] != canvas.raster.shape[1]:
+                print("Warning: canvas is not square, the shape is ", canvas.raster.shape)
+                break
             tiles[ij] = canvas
 
         groups = {k: v for k, v in vars(Groups).items() if not k.startswith("__")}

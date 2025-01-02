@@ -1,11 +1,12 @@
-data/*
 __pycache__/
 **/__pycache__/
-# maploc/*
+maploc/*
 data_osm/*
-shape/*
-network/*
-!network/network.py
-pillarnext/
+# network/*
+# !network/network.py
+# pillarnext/
 runs/*
 checkpoints/*
+datavis/*
+bevfusion/*
+HDMapNet/*

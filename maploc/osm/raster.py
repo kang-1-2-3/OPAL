@@ -17,6 +17,9 @@ class Canvas:
         self.ppm = ppm
         self.scaling = bbox.size * ppm
         self.w, self.h = np.ceil(self.scaling).astype(int)
+        if self.w != self.h:
+            print("Warning: canvas is not square, the shape is ", self.w, self.h)
+        assert self.w ==self.h 
         self.clear()
 
     def clear(self):

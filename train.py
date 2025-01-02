@@ -4,9 +4,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import yaml
-from loss import CircleLoss
-from network.network import Pcmapvpr
-from kitti_dataloader import PcMapLocDataset
+from loss import CircleLoss, CircleLossV2
+from network.network import Pcmapvpr, PcmapvprV2, PcmapvprV4
 from tqdm import tqdm
 import os
 from datetime import datetime
@@ -18,6 +17,8 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
+import pandas as pd
+from kitti_dataloader import PcMapLocDataset
 
 class EarlyStopping:
     def __init__(self, patience=5, delta=0):
@@ -49,46 +50,76 @@ def get_top_k_indices(similarity_matrix, k):
     top_k_values, top_k_indices = torch.topk(similarity_matrix, k, dim=1)
     return top_k_indices
 
+# def save_experiment_para_results(results, config, filename):
+#     results.update({
+#         'learning_rate': config['training']['lr'],
+#         'batch_size': config['training']['batch_size'],
+#         'num_epochs': config['training']['num_epochs'],
+#         'patience': config['training']['early_stop']['patience'],
+#         'device': config['training']['device']
+#     })
+#     df = pd.DataFrame([results])
+#     if os.path.exists(filename):
+#         df.to_excel(filename, index=False, mode='a', header=False)
+#     else:
+#         df.to_excel(filename, index=False)
+
 def get_top_percentage_indices(similarity_matrix, percentage=0.01):
-    k = int(similarity_matrix.size(1) * percentage)
+    k = max(1, int(similarity_matrix.size(1) * percentage))
     return get_top_k_indices(similarity_matrix, k)
 
-def get_top_k_ratio(similarity_matrix, top_k_indices):
-    correct_matches = (top_k_indices == torch.arange(similarity_matrix.size(0), device=similarity_matrix.device).unsqueeze(1)).sum().item()
-    return correct_matches / similarity_matrix.size(0)
+def get_top_k_ratio(top_k_indices, correct_index):
+    return (top_k_indices == correct_index).any().item()
+
+def calculate_geolocalization_metrics(top_indices, correct_coords, xy_list):
+    geo_1m = 0
+    geo_5m = 0
+    geo_10m = 0
+    for idx in top_indices[0]:
+        top_coords = xy_list[idx].cpu().numpy()
+        distance = np.linalg.norm(top_coords - correct_coords)
+        if distance <= 1:
+            geo_1m = 1
+        if distance <= 5:
+            geo_5m = 1
+        if distance <= 10:
+            geo_10m = 1
+    return geo_1m, geo_5m, geo_10m
 
 def validate_model(model: nn.Module, val_loader: DataLoader, criterion: nn.Module, device: torch.device) -> dict:
     model.eval()
     val_loss = 0.0
     with torch.no_grad():
         osm_feture_database = []
-        pc_features = []   
+        pc_features = []
+        xy_list = []   
         for data in tqdm(val_loader, desc="Validation"):
-            start_time = time.time()  # 开始计时
-            osm_data, pc_bev_data = data['osm_map'].to(device), data['pc_bev_img'].to(device)
-            data_loading_time = time.time() - start_time  # 数据加载时间
-            start_time = time.time()  # 开始计时
-            osm_descs, pc_bev_descs = model(osm_data, pc_bev_data)
-            model_run_time = time.time() - start_time  # 模型运行时间
-            pad_size = 8192 - 1024
-            osm_descs = F.pad(osm_descs, (0, pad_size), mode='constant', value=0)
+            xy, osm_data, pc_bev_img = data['xy'].to(device), data['osm_map'].to(device), data['pc_bev_img'].to(device)
+            osm_descs, pc_bev_descs = model(osm_data, pc_bev_img)
             osm_feture_database.append(osm_descs)
             pc_features.append(pc_bev_descs)
+            xy_list.append(xy)
             loss = criterion(osm_descs, pc_bev_descs)
             val_loss += loss.item() * osm_data.size(0)
-            # print(f"Validation step - Data loading time: {data_loading_time:.2f} seconds, Model run time: {model_run_time:.2f} seconds")  
         osm_feture_database = torch.cat(osm_feture_database, dim=0)
         pc_features = torch.cat(pc_features, dim=0)
+        xy_list = torch.cat(xy_list, dim=0)
         
         # Initialize metrics
-        top1_ratio = 0.0
-        top5_ratio = 0.0
+        top_1_ratio = 0.0
+        top_5_ratio = 0.0
         top_1_percent_ratio = 0.0
+        geo_metrics = {
+            'top1': {'geo_1m_ratio': 0.0, 'geo_5m_ratio': 0.0, 'geo_10m_ratio': 0.0},
+            'top5': {'geo_1m_ratio': 0.0, 'geo_5m_ratio': 0.0, 'geo_10m_ratio': 0.0},
+            'top1_percent': {'geo_1m_ratio': 0.0, 'geo_5m_ratio': 0.0, 'geo_10m_ratio': 0.0}
+        }
         
         # Loop through each pc_feature
-        for pc_feature in pc_features:
+        for i, pc_feature in enumerate(pc_features):
             # Calculate cosine similarity
             similarity_matrix = F.cosine_similarity(pc_feature.unsqueeze(0), osm_feture_database.unsqueeze(0), dim=2)
+            correct_index = torch.tensor([i], device=similarity_matrix.device)
             
             # Get top k and top percentage k indices
             top1_indices = get_top_k_indices(similarity_matrix, k=1)
@@ -96,24 +127,51 @@ def validate_model(model: nn.Module, val_loader: DataLoader, criterion: nn.Modul
             top_1_percent_indices = get_top_percentage_indices(similarity_matrix, percentage=0.01)
             
             # Calculate ratios
-            top1_ratio += get_top_k_ratio(similarity_matrix, top1_indices)
-            top5_ratio += get_top_k_ratio(similarity_matrix, top5_indices)
-            top_1_percent_ratio += get_top_k_ratio(similarity_matrix, top_1_percent_indices)
+            top_1_ratio += get_top_k_ratio(top1_indices, correct_index)
+            top_5_ratio += get_top_k_ratio(top5_indices, correct_index)
+            top_1_percent_ratio += get_top_k_ratio(top_1_percent_indices, correct_index)
+            
+            # Calculate geolocalization distances
+            correct_coords = xy_list[correct_index].cpu().numpy()
+            
+            # Check top 1
+            geo_1m, geo_5m, geo_10m = calculate_geolocalization_metrics(top1_indices, correct_coords, xy_list)
+            geo_metrics['top1']['geo_1m_ratio'] += geo_1m
+            geo_metrics['top1']['geo_5m_ratio'] += geo_5m
+            geo_metrics['top1']['geo_10m_ratio'] += geo_10m
+            
+            # Check top 5
+            geo_1m, geo_5m, geo_10m = calculate_geolocalization_metrics(top5_indices, correct_coords, xy_list)
+            geo_metrics['top5']['geo_1m_ratio'] += geo_1m
+            geo_metrics['top5']['geo_5m_ratio'] += geo_5m
+            geo_metrics['top5']['geo_10m_ratio'] += geo_10m
+            
+            # Check top 1 percent
+            geo_1m, geo_5m, geo_10m = calculate_geolocalization_metrics(top_1_percent_indices, correct_coords, xy_list)
+            geo_metrics['top1_percent']['geo_1m_ratio'] += geo_1m
+            geo_metrics['top1_percent']['geo_5m_ratio'] += geo_5m
+            geo_metrics['top1_percent']['geo_10m_ratio'] += geo_10m
         
         # Average the ratios
-        top1_ratio /= len(pc_features)
-        top5_ratio /= len(pc_features)
+        top_1_ratio /= len(pc_features)
+        top_5_ratio /= len(pc_features)
         top_1_percent_ratio /= len(pc_features)
+        for key in geo_metrics:
+            geo_metrics[key]['geo_1m_ratio'] /= len(pc_features)
+            geo_metrics[key]['geo_5m_ratio'] /= len(pc_features)
+            geo_metrics[key]['geo_10m_ratio'] /= len(pc_features)
         
     val_loss /= len(val_loader.dataset)
     
     results = {
         'val_loss': val_loss,
-        'top1_ratio': top1_ratio,
-        'top5_ratio': top5_ratio,
-        'top_1_percent_ratio': top_1_percent_ratio
+        'top_1_ratio': top_1_ratio,
+        'top_5_ratio': top_5_ratio,
+        'top_1_percent_ratio': top_1_percent_ratio,
+        'geo_metrics': geo_metrics
     }
     
+    print(f"Validation Loss: {val_loss:.4f}, geo_5m: {geo_metrics['top1']['geo_5m_ratio']:.4f},  {geo_metrics['top5']['geo_5m_ratio']:.4f},  {geo_metrics['top1_percent']['geo_5m_ratio']:.4f}")
     return results
 
 def save_checkpoint(state, filename='checkpoint.pth.tar'):
@@ -148,7 +206,42 @@ def send_email(subject, body, config):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
-def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, criterion: nn.Module, optimizer: optim.Optimizer, config: dict):
+def format_geo_metrics(geo_metrics):
+    table = "=== Geolocalization Metrics ===\n"
+    table += "| Metric Type | 1m Ratio | 5m Ratio | 10m Ratio |\n"
+    table += "|------------|----------|-----------|------------|\n"
+    
+    for key, metrics in geo_metrics.items():
+        table += f"| {key:<10} | {metrics['geo_1m_ratio']:.4f}  | {metrics['geo_5m_ratio']:.4f}   | {metrics['geo_10m_ratio']:.4f}    |\n"
+    
+    return table
+
+def format_training_results(val_loss, top1_ratio, top5_ratio, top1_percent_ratio, best_epoch, current_epoch, best_dict):
+    table = "=== Training Results ===\n"
+    table += "| Metric              | Value  |\n"
+    table += "|--------------------|--------|\n"
+    table += f"| Best Val Loss       | {val_loss:.4f} |\n"
+    table += f"| Best Top-1 Ratio    | {top1_ratio:.4f} |\n"
+    table += f"| Best Top-5 Ratio    | {top5_ratio:.4f} |\n"
+    table += f"| Best Top-1% Ratio   | {top1_percent_ratio:.4f} |\n"
+    table += f"| Best Epoch          | {best_epoch} |\n"
+    table += f"| Current Epoch       | {current_epoch} |\n"
+    
+    table += "\n=== Best Results Timeline ===\n"
+    table += "| Metric              | Epoch | Step  |\n"
+    table += "|--------------------|-------|-------|\n"
+    for key, value in best_dict.items():
+        if key.startswith('best_'):
+            metric_name = key.replace('best_', '').replace('_epoch', '')
+            epoch = value
+            step = best_dict.get(key.replace('_epoch', '_step'), 'N/A')
+            table += f"| {metric_name:<18} | {epoch:<5} | {step:<5} |\n"
+    
+    return table
+
+def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, 
+                criterion: nn.Module, optimizer: optim.Optimizer, config: dict, 
+                if_send_email: bool = True, if_early_stop: bool = True):
     num_epochs = config['training']['num_epochs']
     patience = config['training']['early_stop']['patience']
     log_dir = config['training']['log_dir']
@@ -166,120 +259,150 @@ def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoad
     os.makedirs(log_subdir, exist_ok=True)
     
     best_val_loss = float('inf')
-    best_top1_ratio = 0.0  # 保存top1_ratio的最大值
-    best_top5_ratio = 0.0  # 保存top5_ratio的最大值
-    best_top_1_percent_ratio = 0.0  # 保存top_1_percent_ratio的最大值
-    best_epoch = 0  # 保存最好结果对应的epoch
-    
+    best_top1_ratio = 0.0  
+    best_top5_ratio = 0.0  
+    best_top_1_percent_ratio = 0.0  
+    best_epoch = 0  
+    best_dict = {}
+
+    best_geo_metrics = {
+        'top1': {'geo_1m_ratio': 0.0, 'geo_5m_ratio': 0.0, 'geo_10m_ratio': 0.0},
+        'top5': {'geo_1m_ratio': 0.0, 'geo_5m_ratio': 0.0, 'geo_10m_ratio': 0.0},
+        'top1_percent': {'geo_1m_ratio': 0.0, 'geo_5m_ratio': 0.0, 'geo_10m_ratio': 0.0}
+    }
     model.to(device)
     early_stopping = EarlyStopping(patience=patience)
     writer = SummaryWriter(log_subdir)
+    validate_model(model, val_loader, criterion, device)
     try:
         for epoch in range(num_epochs):
-            model.train()
+            # model.train()
             running_loss = 0.0
-            start0 = time.time()
             for step, data in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}/{num_epochs - 1}")):
-                start_time = time.time() 
-                if step == 0:
-                    dataload_time = start_time - start0
-                else:
-                    dataload_time = start_time - start1
-                osm_data, pc_bev_data = data['osm_map'].to(device), data['pc_bev_img'].to(device)
-                start_time = time.time() 
+                model.train()
+                xy, osm_data, pc_bev_img = data['xy'].to(device), data['osm_map'].to(device), data['pc_bev_img'].to(device)
                 optimizer.zero_grad()
-                osm_descs, pc_bev_descs = model(osm_data, pc_bev_data) # [B, 4096] [B, 8192]
-                model_run_time = time.time() - start_time 
-                pad_size = 8192 - 1024
-                osm_descs = F.pad(osm_descs, (0, pad_size), mode='constant', value=0)
-                start_time = time.time()
+                osm_descs, pc_bev_descs = model(osm_data, pc_bev_img) # [B, 4096] [B, 8192]
+                # pad_size = 8192 - 256
+                # osm_descs = F.pad(osm_descs, (0, pad_size), mode='constant', value=0)
                 loss = criterion(osm_descs, pc_bev_descs)
                 loss.backward()
                 optimizer.step()
-                loss_time = time.time() - start_time
                 running_loss += loss.item() * osm_data.size(0)
-                start1 = time.time()
-                # print(f"Training step - Data loading time: {dataload_time:.2f} seconds, Model run time: {model_run_time:.2f} seconds, Loss time: {loss_time:.2f} seconds") 
                 
                 if step % 100 == 0:
                     step_loss = running_loss / ((step + 1) * train_loader.batch_size)
-                    print(f'Epoch {epoch}/{num_epochs - 1}, Step {step}, Training Loss: {step_loss:.4f}')
+                    # print(f'Epoch {epoch}/{num_epochs - 1}, Step {step}, Training Loss: {step_loss:.4f}')
                     writer.add_scalar('Training Loss', step_loss, epoch * len(train_loader) + step)
-                
-                if step % val_per_step == 0 and step != 0:
-                    val_results = validate_model(model, val_loader, criterion, device)
-                    val_loss = val_results['val_loss']
-                    best_top1_ratio = max(best_top1_ratio, val_results['top1_ratio'])  # 更新top1_ratio的最大值
-                    best_top5_ratio = max(best_top5_ratio, val_results['top5_ratio'])  # 更新top5_ratio的最大值
-                    best_top_1_percent_ratio = max(best_top_1_percent_ratio, val_results['top_1_percent_ratio'])  # 更新top_1_percent_ratio的最大值
-                    print(f'Epoch {epoch}/{num_epochs - 1}, Step {step}, Validation Loss: {val_loss:.4f}')
-                    writer.add_scalar('Validation Loss', val_loss, epoch * len(train_loader) + step)
-                    writer.add_scalar('Top 1 Ratio', val_results['top1_ratio'], epoch * len(train_loader) + step)
-                    writer.add_scalar('Top 5 Ratio', val_results['top5_ratio'], epoch * len(train_loader) + step)
-                    writer.add_scalar('Top 1% Ratio', val_results['top_1_percent_ratio'], epoch * len(train_loader) + step)
             
             epoch_loss = running_loss / len(train_loader.dataset)
             print(f'Epoch {epoch}/{num_epochs - 1}, Training Loss: {epoch_loss:.4f}')
-            writer.add_scalar('Training Loss', epoch_loss, epoch)
+            writer.add_scalar('Training Loss', epoch_loss, epoch * len(train_loader))
             
             val_results = validate_model(model, val_loader, criterion, device)
             val_loss = val_results['val_loss']
-            best_top1_ratio = max(best_top1_ratio, val_results['top1_ratio'])  
-            best_top5_ratio = max(best_top5_ratio, val_results['top5_ratio'])  
-            best_top_1_percent_ratio = max(best_top_1_percent_ratio, val_results['top_1_percent_ratio'])  
+            if val_results['top_1_ratio'] > best_top1_ratio:
+                best_top1_ratio = val_results['top_1_ratio']
+                best_dict['best_top_1_epoch'] = epoch
+                best_dict['best_top_1_step'] = step
+
+            if val_results['top_5_ratio'] > best_top5_ratio:
+                best_top5_ratio = val_results['top_5_ratio']
+                best_dict['best_top_5_epoch'] = epoch
+                best_dict['best_top_5_step'] = step
+
+            if val_results['top_1_percent_ratio'] > best_top_1_percent_ratio:
+                best_top_1_percent_ratio = val_results['top_1_percent_ratio']
+                best_dict['best_top_1_percentage_epoch'] = epoch
+                best_dict['best_top_1_percentage_step'] = step
+
+            for key in val_results['geo_metrics']:
+                for metric in val_results['geo_metrics'][key]:
+                    if val_results['geo_metrics'][key][metric] > best_geo_metrics[key][metric]:
+                        best_geo_metrics[key][metric] = val_results['geo_metrics'][key][metric]
+                        best_dict[f'best_{key}_{metric}_epoch'] = epoch
+                        best_dict[f'best_{key}_{metric}_step'] = step
+
             print(f'Epoch {epoch}/{num_epochs - 1}, Validation Loss: {val_loss:.4f}')
-            writer.add_scalar('Validation Loss', val_loss, epoch)
-            writer.add_scalar('Top1 Ratio', val_results['top1_ratio'], epoch)
-            writer.add_scalar('Top 5 Ratio', val_results['top5_ratio'], epoch)
-            writer.add_scalar('Top 1% Ratio', val_results['top_1_percent_ratio'], epoch)
+            writer.add_scalar('Validation Loss', val_loss, epoch * len(train_loader) + step)
+            writer.add_scalar('Top 1 Ratio', val_results['top_1_ratio'], epoch * len(train_loader) + step)
+            writer.add_scalar('Top 5 Ratio', val_results['top_5_ratio'], epoch * len(train_loader) + step)
+            writer.add_scalar('Top 1% Ratio', val_results['top_1_percent_ratio'], epoch * len(train_loader) + step)
             
-            # Save current epoch checkpoint
             save_checkpoint({
                 'epoch': epoch,
+                'step': step,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_loss': val_loss,
-                'top1_ratio': val_results['top1_ratio'],
-                'top5_ratio': val_results['top5_ratio'],
+                'top_1_ratio': val_results['top_1_ratio'],
+                'top_5_ratio': val_results['top_5_ratio'],
                 'top_1_percent_ratio': val_results['top_1_percent_ratio'],
             }, filename=f'{checkpoint_subdir}/checkpoint_epoch_{epoch}.pth.tar')
             
             # Save best checkpoint
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                best_epoch = epoch  # 更新最好结果对应的epoch
+                best_epoch = epoch  
                 save_checkpoint({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'val_loss': val_loss,
-                    'top1_ratio': val_results['top1_ratio'],
-                    'top5_ratio': val_results['top5_ratio'],
+                    'top_1_ratio': val_results['top_1_ratio'],
+                    'top_5_ratio': val_results['top_5_ratio'],
                     'top_1_percent_ratio': val_results['top_1_percent_ratio'],
                 }, filename=f'{checkpoint_subdir}/best_checkpoint.pth.tar')
+                best_dict['best_val_loss_epoch'] = epoch
+                best_dict['best_val_loss_step'] = step
             
-            early_stopping(val_loss)
-            if early_stopping.early_stop:
-                print("Early stopping")
-                send_email(
-                    subject="Training Early Stopped",
-                    body=f"Training has been early stopped. \nBest validation loss: {best_val_loss:.4f}\nBest Top 1 Ratio: {best_top1_ratio:.4f}\nBest Top 5 Ratio: {best_top5_ratio:.4f}\nBest Top 1% Ratio: {best_top_1_percent_ratio:.4f}\nBest Epoch: {best_epoch}\nCurrent Epoch: {epoch}",
-                    config=config
-                )
-                break
-        else:
-            writer.close()
+            if if_early_stop:
+                early_stopping(val_loss)
+                if early_stopping.early_stop:
+                    print("Early stopping")
+                    if if_send_email:
+                        email_body = "Training has been early stopped.\n\n This is with no rotation with lr = 10^-5 and circle loss v2 with bs16, only building, dim=8192"
+                        email_body += format_training_results(
+                            best_val_loss, best_top1_ratio, best_top5_ratio, 
+                            best_top_1_percent_ratio, best_epoch, epoch, best_dict
+                        )
+                        email_body += "\n" + format_geo_metrics(best_geo_metrics)
+                        
+                        send_email(
+                            subject="Training Early Stopped",
+                            body=email_body,
+                            config=config
+                        )
+                    break
+        
+        # Training completed (either normally or through early stopping)
+        writer.close()
+        if if_send_email and not early_stopping.early_stop:
+            email_body = "Training has completed successfully.\n\n"
+            email_body += format_training_results(
+                best_val_loss, best_top1_ratio, best_top5_ratio, 
+                best_top_1_percent_ratio, best_epoch, epoch, best_dict
+            )
+            email_body += "\n" + format_geo_metrics(best_geo_metrics)
+            
             send_email(
                 subject="Training Completed",
-                body=f"Training has completed successfully. Best validation loss: {best_val_loss:.4f}\nBest Top1 Ratio: {best_top1_ratio:.4f}\nBest Top 5 Ratio: {best_top5_ratio:.4f}\nBest Top 1% Ratio: {best_top_1_percent_ratio:.4f}\nBest Epoch: {best_epoch}\nCurrent Epoch: {epoch}",
+                body=email_body,
                 config=config
             )
     except Exception as e:
-        send_email(
-            subject="Training Failed",
-            body=f"Training has failed with error: {str(e)}\nEpoch: {epoch}, Step: {step}\nBest Epoch: {best_epoch}",
-            config=config
-        )
+        print(f"Training error occurred: {str(e)}")
+        if if_send_email:
+            error_message = f"Training failed with error: {str(e)}\n"
+            error_message += f"Current epoch: {epoch}\n"
+            error_message += f"Best validation loss: {best_val_loss:.4f}\n"
+            error_message += f"Best epoch: {best_epoch}"
+            
+            send_email(
+                subject="Training Failed",
+                body=error_message,
+                config=config
+            )
         raise e
 
 def set_seed(seed):
@@ -304,7 +427,9 @@ if __name__ == "__main__":
     print('Device:', config['training']['device'])
     # model, criterion, optimizer
     model = Pcmapvpr(config)
-    criterion = CircleLoss() 
+    criterion = CircleLossV2()
+    # from loss import ContrastiveLoss
+    # criterion = ContrastiveLoss()
     optimizer = optim.Adam(model.parameters(), lr=config['training']['lr'])
     
     # data loader
@@ -313,10 +438,9 @@ if __name__ == "__main__":
     
     train_loader = DataLoader(train_dataset, batch_size=config['training']['batch_size'], shuffle=True, drop_last=True, num_workers=config['training']['num_workers'], pin_memory=True)
     print('Train dataset loaded, length:', len(train_loader.dataset))
-    val_loader = DataLoader(val_dataset, batch_size=config['training']['batch_size'], shuffle=False, drop_last=True, num_workers=config['training']['num_workers'], pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=config['training']['batch_size'], shuffle=False, drop_last=False, num_workers=config['training']['num_workers'], pin_memory=True)
     print('Validation dataset loaded, length:', len(val_loader.dataset))
     # print(val_loader.batch_size)
     # print(len(train_loader.dataset))
-
     # training process
-    train_model(model, train_loader, val_loader, criterion, optimizer, config)
+    train_model(model, train_loader, val_loader, criterion, optimizer, config, if_send_email=True, if_early_stop=True)

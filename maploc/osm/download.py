@@ -25,7 +25,11 @@ def get_osm(
     query = {"bbox": f"{left},{bottom},{right},{top}"}
 
     logger.info("Calling the OpenStreetMap API...")
-    result = urllib3.request("GET", OSM_URL, fields=query, timeout=10)
+
+    http = urllib3.PoolManager()
+    result = http.request("GET", OSM_URL, fields=query, timeout=10)
+
+    # result = urllib3.request("GET", OSM_URL, fields=query, timeout=10)
     if result.status != 200:
         error = result.info()["error"]
         raise ValueError(f"{result.status} {responses[result.status]}: {error}")

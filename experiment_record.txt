@@ -1,0 +1,26 @@
+1. lr=10e-4, osm_dim = 1024, osm_encoder = cnn, pc_dim=8192, pc_encoder=bev img
+Best validation loss: 10.0017
+Best Top 1 Ratio: 0.0006
+Best Top 5 Ratio: 0.0039
+Best Top 1% Ratio: 0.0345
+Best Epoch: 0
+Current Epoch: 5
+Best Dict: {'best_top_1_epoch': 0, 'best_top_1_step': 2000, 'best_top_5_epoch': 5, 'best_top_5_step': 2000, 'best_top_1_percentage_epoch': 5, 'best_top_1_percentage_step': 2000, 'best_val_loss_epoch': 0, 'best_val_loss_step': 3298}
+
+2. lr=10e-4, osm_dim = 256 (with VLAD), osm_encoder = cnn, pc_dim=8192, pc_encoder=bev img
+Best validation loss: 10.0012
+Best Top 1 Ratio: 0.0011
+Best Top 5 Ratio: 0.0036
+Best Top 1% Ratio: 0.0303
+Best Epoch: 0
+Current Epoch: 5
+Best Dict: {'best_top_1_epoch': 3, 'best_top_1_step': 2000, 'best_top_5_epoch': 3, 'best_top_5_step': 2000, 'best_top_1_percentage_epoch': 3, 'best_top_1_percentage_step': 2000, 'best_val_loss_epoch': 0, 'best_val_loss_step': 3298}
+
+3. lr=10e-4, osm_dim = 256 (with VLAD), osm_encoder = cnn, pc_dim=256 (with 1*1 conv & ReLU), pc_encoder=bev img
+Best validation loss: 10.2019
+Best Top 1 Ratio: 0.0011
+Best Top 5 Ratio: 0.0049
+Best Top 1% Ratio: 0.0328
+Best Epoch: 0
+Current Epoch: 5
+Best Dict: {'best_top_1_epoch': 5, 'best_top_1_step': 2000, 'best_top_5_epoch': 5, 'best_top_5_step': 2000, 'best_top_1_percentage_epoch': 1, 'best_top_1_percentage_step': 3298, 'best_val_loss_epoch': 0, 'best_val_loss_step': 3298}
