@@ -1,0 +1,145 @@
+<html>
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>OPAL: Visibility-aware LiDAR-to-OpenStreetMap Place Recognition via Adaptive Radial Fusion </title>
+  <link href="./OPAL/style.css" rel="stylesheet">
+  <script type="text/javascript" src="./OPAL/jquery.mlens-1.0.min.js"></script>
+  <script type="text/javascript" src="./OPAL/jquery.js"></script>
+  <style>
+    .divider {
+      border-right: 2px dashed #737373;
+      width: 2px;
+    }
+  </style>
+  <style>
+    .divider_horizontal {
+      border-top: 2px dashed #737373;
+      display: block;
+      width: 100%;
+      margin: 10px 0;
+    }
+  </style>
+  
+</head>
+
+<body>
+  <div class="content">
+    <h1><strong>OPAL: Visibility-aware LiDAR-to-OpenStreetMap Place Recognition via Adaptive Radial Fusion</strong>
+    </h1>
+    <p id="authors">
+      <span>
+        <a href="https://kang-1-2-3.github.io/">Shuhao Kang*<sup>1</sup></a>
+      </span>
+      <span>
+        <a href="https://martin-liao.github.io/">Martin Y.Liao*<sup>2</sup></a>
+      </span>
+      <span>
+        <a href="https://yan-xia.github.io/">Yan Xia<sup>&dagger;</sup><sup>3</sup></a>
+      </span>
+      <span>
+        <a href="https://olafwysocki.github.io/">Olaf Wysocki<sup>4,&dagger;</sup></a>
+      </span>
+      <br>
+      <span>
+        <a href="https://www.professoren.tum.de/en/jutzi-boris"> Boris Jutzi<sup>5</sup></a>
+      </span>
+      <span>
+        <a href="https://cvg.cit.tum.de/members/cremers">Daniel Cremers<sup>1</sup></a>
+      </span>
+      <br>
+      <span class="institution">
+        <a href="https://www.tum.de/"><sup>1</sup>Technical University of Munich </a> 
+        <a href="https://en.whu.edu.cn/"><sup>2</sup>Wuhan University </a> 
+        <a href="https://en.whu.edu.cn/"><sup>3</sup>University of Science and Technology of China </a> 
+        <br>
+        <a href="https://en.whu.edu.cn/"><sup>4</sup>University of Cambridge </a> 
+        <a href="https://en.whu.edu.cn/"><sup>5</sup>Karlsruhe Institute of Technology </a> 
+      </span> 
+
+        <sup>*</sup>The first two authors contribute equally. &nbsp;&nbsp;
+        <sup>&dagger;</sup>Corresponding author. &nbsp;&nbsp; 
+    </p>
+    <font size="+3">
+      <p style="text-align: center;">
+        <a href="https://arxiv.org/abs/2504.19258" target="_blank">[Paper]</a> &nbsp;&nbsp;&nbsp;&nbsp;
+        <a href="https://youtu.be/9yECPbX3BZs" target="_blank">[video]</a>&nbsp;&nbsp;&nbsp;&nbsp;
+        <a href="https://github.com/kang-1-2-3/OPAL" target="_blank">[Code]</a>&nbsp;&nbsp;&nbsp;&nbsp;
+        <a href="./OPAL/bibtex.txt" target="_blank">[BibTeX]</a>
+      </p>
+    </font>
+    
+    <h3>
+      <center>What can OPAL do?</center>
+    </h3>
+    <img src="./OPAL/motivation_repo.png" class="teaser-gif" style="width:80%"><br>
+    <a style="text-align:center">
+      OPAL is an  <strong> (a) Point cloud-to-OpenStreetMap (P2O) place recognition estimates the geographic location of a LiDAR scan by matching the semantic point cloud to geo-referenced OpenStreetMap tiles. </strong>  
+      (a) illustrates the problem setup, while (b) shows the evaluation results.
+  </a>
+  </div>
+
+  <div class="content">
+    <h2 style="text-align:center;">Abstract</h2>
+    <p> LiDAR place recognition is a critical capability for autonomous navigation and cross-modal localization in large-scale outdoor environments. 
+      Existing approaches predominantly depend on pre-built 3D dense maps or aerial imagery, which impose significant storage overhead and lack real-time adaptability. 
+      In this paper, we propose OPAL, a novel framework for LiDAR place recognition that leverages OpenStreetMap (OSM) as a lightweight and up-to-date prior. 
+      Our key innovation lies in bridging the domain disparity between sparse LiDAR scans and structured OSM data through two carefully designed components. 
+      First, a cross-modal visibility mask that identifies observable regions from both modalities to guide feature alignment. 
+      Second, an adaptive radial fusion module that dynamically consolidates radial features into discriminative global descriptors. 
+      Extensive experiments on KITTI and KITTI-360 datasets demonstrate OPAL's superiority, achieving 15.98% higher recall 
+      at 1m threshold for top-1 retrieved matches, along with 12x faster inference speed compared to the state-of-the-art approach. 
+  </div>
+
+  <div class="content">
+    <h2>Introduction Video</h2>
+    <video width="100%" controls autoplay control src="video.mp4" ></video>
+  </div>
+
+
+  <div class="content">
+    <h2>Place recognition results</h2>
+    <h3>
+      <center>Comparable results</center>
+    </h3>
+    <img class="results" src="./OPAL/Qualitative_vis.png" style="width:100%;">
+    <br><br>
+
+    <h3>
+      <center>Top-1 retrieved results @5m along the trajectory (KITTI seq 00)</center>
+    </h3>
+    <img class="results" src="./OPAL/trajectory.png" style="width:100%;">
+    <br><br>
+
+    <h3>
+      <center>Top-1 retrieved results @5m recall curve (KITTI seq 00) </center>
+    </h3>
+    <img class="results" src="./OPAL/topk_recall_results.png" style="width:100%;">
+    <a>
+      <!--
+      <strong>(a)</strong> color image. 
+      <strong>(b)</strong> 
+      <strong>(c-e)</strong> Diffusion / Geometric / Fused Feature maps of the input RGB images and point clouds. 
+      <strong>(g)</strong> Estimated correspondences from FreeReg.
+      -->
+      </a>
+  </div>
+
+  
+  <div class="content">
+    <h2>BibTex</h2>
+    <code> @misc{kang2025opal,<br>
+  &nbsp;&nbsp;title={OPAL: Visibility-aware LiDAR-to-OpenStreetMap Place Recognition via Adaptive Radial Fusion},<br>
+  &nbsp;&nbsp;author={Shuhao Kang and Martin Y. Liao and Yan Xia and Olaf Wysocki and Boris Jutzi and Daniel Cremers},<br>
+  &nbsp;&nbsp;journal={arXiv preprint arXiv:2504.19258},<br>
+  &nbsp;&nbsp;year={2025}<br>
+  } </code> 
+  </div>
+  <div class="content" id="acknowledgements">
+    <p><strong>Acknowledgements</strong>:
+      We borrow this template from <a href="https://whu-usi3dv.github.io/FreeReg/">FreeReg</a>.
+    </p>
+  </div>
+</body>
+
+</html>
