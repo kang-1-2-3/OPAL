@@ -5,3 +5,4 @@ data_osm/osm/karlsruhe.osm
 scripts/
 checkpoints
 runs/
+.vscode/
