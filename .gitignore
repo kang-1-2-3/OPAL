@@ -1,12 +1,7 @@
 __pycache__/
 **/__pycache__/
-maploc/*
-data_osm/*
-# network/*
-# !network/network.py
-# pillarnext/
-runs/*
-checkpoints/*
-datavis/*
-bevfusion/*
-HDMapNet/*
+.vscode/
+data_osm/osm/karlsruhe.osm
+scripts/
+checkpoints
+runs/

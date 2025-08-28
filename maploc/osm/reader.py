@@ -309,3 +309,43 @@ class OSMData:
             xys = proj.project(geos)
         for xy, node in zip(xys, nodes):
             node.xy = xy
+    def add_xy_to_nodes_with_noise(self, proj: Projection, noise_magnitude: float):
+        """
+        为每个节点投影坐标添加均匀噪声，噪声范围为 [0, noise_magnitude) 米。
+        """
+        nodes = list(self.nodes.values())
+        if len(nodes) == 0:
+            return
+
+        geos = np.stack([n.geo for n in nodes], 0)  # 原始经纬度
+        if proj.bounds is not None:
+            valid = proj.bounds.contains(geos)
+            if valid.mean() < 0.9:
+                print("Many nodes are out of the projection bounds.")
+            xys = np.zeros_like(geos)
+            xys[valid] = proj.project(geos[valid])
+
+            # 添加噪声（对有效点）
+            noise = np.random.uniform(0, noise_magnitude, size=(np.sum(valid), 2))
+            xys[valid] += noise
+
+            # 将含噪声坐标逆投影回地理坐标（经纬度），再检查边界
+            geos_noisy = np.zeros_like(geos)
+            geos_noisy[valid] = proj.unproject(xys[valid])
+            still_valid = proj.bounds.contains(geos_noisy[valid])
+            if not np.all(still_valid):
+                print(f"Warning: {np.sum(~still_valid)} nodes with noise fall out of bounds.")
+
+        else:
+            xys = proj.project(geos)
+            noise = np.random.uniform(0, noise_magnitude, size=(xys.shape[0], 2))
+            xys += noise
+
+            geos_noisy = proj.unproject(xys)
+            still_valid = proj.bounds.contains(geos_noisy) if proj.bounds else np.full(len(nodes), True)
+            if not np.all(still_valid):
+                print(f"Warning: {np.sum(~still_valid)} nodes with noise fall out of bounds.")
+
+        # 更新节点
+        for xy, node in zip(xys, nodes):
+            node.xy = xy

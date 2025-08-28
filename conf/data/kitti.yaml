@@ -1,51 +1,30 @@
 name: kitti 
 loading:
   pc_data_dir: "/data/Pcmaploc/data/kitti/data_odometry_velodyne/dataset"
-  osm_data_dir: "./data_osm/osm/karlsruhe.osm"
-  gps_data_dir: "./maploc/data/kitti"
-  pc_bev_dir: '/data/Pcmaploc/data/kitti/onlybuildingbev/sequences/'
-  # pc_bev_dir: '/home/kang/dataset/dataset/sequences'
+  kitti360_data_dir: "/data/CVGL_data/KITTI360/data_3d_raw"
+  # osm_data_dir: "./data_osm/osm/karlsruhe.osm"
+  gps_data_dir: "./data/kitti"
   dataset_split:
-    train: ['04', '05', '06', '07', '08', '09', '10']
-    val: ['02']
-    train: ['00']
+    train: ['01', '02', '04', '05', '06', '08', '09', '10']
+    val: ['00']
 tiling:
-  tiles_path: "./maploc/data/kitti"
-  tile_margin: 80
+  tiles_path: "./data/kitti"
+  tile_margin: 100
 model:
-    map_encoder:
-      embedding_dim: 16
-      output_dim: 8
-      num_classes: 
-        areas: 7
-        ways: 10
-        nodes: 33
-      backbone:
-        encoder: vgg19
-        pretrained: false
-        output_scales: [0]
-        num_downsample: 3
-        decoder: [128, 64, 64]
-        padding: replicate
-      unary_prior: false
+  map_encoder:
+    embedding_dim: 16
+    num_classes: 
+      areas: 7
+      ways: 10
+      nodes: 33
+
 training:
   num_workers: 8
   device: "cuda:0"
   seed: 42
   checkpoint_dir: "checkpoints"
-  # device: "cpu"
-  early_stop:
-    patience: 5
-  num_epochs: 200
-  lr: 0.00001
-  weight_decay: 0.000001
+  num_epochs: 50
+  lr: 0.001
+  weight_decay: 0.00001
   log_dir: "runs"
   batch_size: 16
-  val_per_step_num: 2000
-notification:
-  to_email: "kangshuhao1888@gmail.com"
-  from_email: "906216606@qq.com"
-  smtp_server: "smtp.qq.com"
-  smtp_port: 465
-  smtp_user: "906216606@qq.com"
-  smtp_password: "obbihtenpioubbeh"

@@ -103,6 +103,7 @@ class TileManager:
             osm = OSMData.from_dict(get_osm(bbox_osm, path))
 
         osm.add_xy_to_nodes(projection)
+        # osm.add_xy_to_nodes_with_noise(projection, 0.5)
         map_data = MapData.from_osm(osm)
         # print(f"Loaded {len(map_data.nodes)} nodes, {len(map_data.lines)} lines, {len(map_data.areas)} areas")
         map_index = MapIndex(map_data)
