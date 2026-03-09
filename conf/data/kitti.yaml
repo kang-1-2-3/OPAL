@@ -1,7 +1,7 @@
 name: kitti 
 loading:
-  pc_data_dir: "/data/Pcmaploc/data/kitti/data_odometry_velodyne/dataset"
-  kitti360_data_dir: "/data/CVGL_data/KITTI360/data_3d_raw"
+  pc_data_dir: "/home/data_sata/Pcmaploc/data/kitti/data_odometry_velodyne/dataset"
+  kitti360_data_dir: "/home/data_sata/CVGL_data/KITTI360/data_3d_raw"
   # osm_data_dir: "./data_osm/osm/karlsruhe.osm"
   gps_data_dir: "./data/kitti"
   dataset_split:
